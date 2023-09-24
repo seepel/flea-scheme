@@ -31,6 +31,30 @@ forth.bind("FREE",  (forth) => {
   forth.push(result);
 });
 
+forth.interpret(readFileSync("./memory.fs", "utf8"));
+
+forth.bind("SP", (forth) => {
+  forth.push(forth.core.exports.tos());
+});
+forth.bind("RP", (forth) => {
+  forth.push(forth.core.exports.tors());
+});
+
+forth.bind("SETSP", (forth) => {
+  forth.core.exports.settos(forth.pop());
+});
+
+forth.bind("SETRP", (forth) => {
+  forth.core.exports.settors(forth.pop());
+});
+
+forth.interpret(`
+: SP@ S" SP" SCALL ;
+: RP@ S" RP" SCALL ;
+: SP! S" SETSP" SCALL ;
+: RP! S" SETRP" SCALL ;
+`);
+
 
 forth.interpret(src);
 
