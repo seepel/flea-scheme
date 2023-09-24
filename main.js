@@ -13,7 +13,7 @@ await forth.load();
 
 // Instantiate the memory module
 const walloc = await WebAssembly.instantiate(
-  new WebAssembly.Module(readFileSync("./vendor/walloc/walloc.wasm")),
+  new WebAssembly.Module(readFileSync("./walloc.wasm")),
   {
     env: {
       memory: forth.core.exports.memory,
