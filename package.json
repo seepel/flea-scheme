@@ -1,0 +1,27 @@
+{
+  "name": "flea-scheme",
+  "version": "0.0.1",
+  "description": "WebAssembly Scheme Interpreter",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seepel/flea-scheme.git"
+  },
+  "keywords": [
+    "scheme",
+    "forth"
+  ],
+  "author": "Sean Lynch",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/seepel/flea-scheme/issues"
+  },
+  "homepage": "https://github.com/seepel/flea-scheme#readme",
+  "dependencies": {
+    "typescript": "^5.2.2"
+  }
+}
