@@ -1,0 +1,3 @@
+[submodule "vendor/walloc"]
+	path = vendor/walloc
+	url = git@github.com:seepel/walloc.git
