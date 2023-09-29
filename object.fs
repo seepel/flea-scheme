@@ -33,7 +33,7 @@
 \       ii. If the first two bits are 01 we'll use that for fixnums
 \  9. We have an extra bit to use for dynamic objects
 \     We'll use that to distinguish a special first class object
-\       i.  If the first two bits are 10 it is a continuation
+\       i.  If the first two bits are 10 it is a pair
 \       ii. If the first two bits are 00 it is another dynamic object
  
 \ +-------------------------------------------------------------------+
@@ -42,7 +42,7 @@
 \  The first two bits determine the type class of the object. one of 
 \  1. #f
 \  2. obj
-\  3. cont
+\  3. pair
 \  4. fixnum
 \  5. imm
 \
