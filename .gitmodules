@@ -1,3 +1,6 @@
 [submodule "vendor/walloc"]
 	path = vendor/walloc
 	url = git@github.com:seepel/walloc.git
+[submodule "vendor/forth2012-test-suite"]
+	path = vendor/forth2012-test-suite
+	url = git@github.com:seepel/forth2012-test-suite.git
