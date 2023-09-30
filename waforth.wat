@@ -2406,7 +2406,7 @@
 
   ;; [6.1.2540](https://forth-standard.org/standard/right-bracket)
   (func $right-bracket (param $tos i32) (result i32)
-    (i32.store (i32.const 0x20990 (; = body(STATE) ;)) (i32.const 1))
+    (i32.store (i32.const 0x20990 (; = body(STATE) ;)) (i32.const 2)) ;; Compiling ITC
     (local.get $tos))
   (data (i32.const 0x20b04) "\f8\0a\02\00" "\01" "]  " "\c2\00\00\00")
   (elem (i32.const 0xc2) $right-bracket)
@@ -2477,7 +2477,8 @@
       ;; agnostic about whether it is compiling a word or a DOES>.
       (global.get $nextTableIndex))
     (call $startColon (i32.const 0))
-    (call $right-bracket (local.get $tos)))
+    ((i32.store  (i32.const 0x20990) (; = body(STATE) ;)) (i32.const 1)) ;; compiling STC
+    (local.get $tos))
 
   ;; Initializes compilation.
   ;; Parameter indicates the type of code we're compiling: type 0 (no params), 
@@ -2772,15 +2773,22 @@
     
   (func $compileExecute (param $tos i32) (param $xt i32) (result i32)
     (local $body i32)
-    (local.set $body (call $body (local.get $xt)))
-    (if (i32.and (i32.load (i32.add (local.get $xt) (i32.const 4)))
-                 (i32.const 0x40 (; = F_DATA ;)))
-      (then
-        (call $emitConst (i32.add (local.get $body) (i32.const 4)))
-        (call $compileCall (i32.const 1) (i32.load (local.get $body))))
-      (else
-        (call $compileCall (i32.const 0) (i32.load (local.get $body)))))
-    (local.get $tos))
+    (if (i32.eq (local.get $xt) (i32.const 2)) 
+      ;; ITC
+      (then 
+        (i32.store (global.get $here) (local.get $xt))
+        (global.set $here 
+          (call $aligned (i32.add (global.get $here) (i32.const 4)))))
+      (else 
+        (local.set $body (call $body (local.get $xt)))
+        (if (i32.and (i32.load (i32.add (local.get $xt) (i32.const 4)))
+                     (i32.const 0x40 (; = F_DATA ;)))
+          (then
+            (call $emitConst (i32.add (local.get $body) (i32.const 4)))
+            (call $compileCall (i32.const 1) (i32.load (local.get $body))))
+          (else
+            (call $compileCall (i32.const 0) (i32.load (local.get $body)))))
+        (local.get $tos)))) 
   (elem (i32.const 0x5 (; = COMPILE_EXECUTE_INDEX ;)) $compileExecute)
 
   (func $compileCall (param $type i32) (param $n i32)
