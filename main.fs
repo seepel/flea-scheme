@@ -1,2 +1,2 @@
-: HELLO ." Hello World!" CR ;
-HELLO
+: SQUARE DUP * ;
+2 SQUARE .
