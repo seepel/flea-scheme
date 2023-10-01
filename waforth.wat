@@ -2477,7 +2477,7 @@
       ;; agnostic about whether it is compiling a word or a DOES>.
       (global.get $nextTableIndex))
     (call $startColon (i32.const 0))
-    ((i32.store  (i32.const 0x20990) (; = body(STATE) ;)) (i32.const 1)) ;; compiling STC
+    (i32.store  (i32.const 0x20990) (; = body(STATE) ;) (i32.const 1)) ;; compiling STC
     (local.get $tos))
 
   ;; Initializes compilation.
@@ -2773,6 +2773,7 @@
     
   (func $compileExecute (param $tos i32) (param $xt i32) (result i32)
     (local $body i32)
+    (local.get $tos)
     (if (i32.eq (local.get $xt) (i32.const 2)) 
       ;; ITC
       (then 
@@ -2787,8 +2788,7 @@
             (call $emitConst (i32.add (local.get $body) (i32.const 4)))
             (call $compileCall (i32.const 1) (i32.load (local.get $body))))
           (else
-            (call $compileCall (i32.const 0) (i32.load (local.get $body)))))
-        (local.get $tos)))) 
+            (call $compileCall (i32.const 0) (i32.load (local.get $body))))))))
   (elem (i32.const 0x5 (; = COMPILE_EXECUTE_INDEX ;)) $compileExecute)
 
   (func $compileCall (param $type i32) (param $n i32)
