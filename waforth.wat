@@ -78,7 +78,7 @@
               (block $caseDefault 
                 (block $caseOK 
                   (block $caseCompiled 
-                    (br_table $caseOK $caseCompiled $caseDefault 
+                    (br_table $caseOK $caseCompiled $caseCompiled $caseDefault 
                       (i32.load (i32.const 0x20990 (; = body(STATE) ;)))))
                   (i32.const 0x2009c (; = str("compiled\n") ;)) (br $endCase))
                 (i32.const 0x20091 (; = str("ok\n") ;)) (br $endCase))
@@ -159,9 +159,31 @@
         (br $loop)))
     (local.get $tos))
 
+  (func $executeCall (param $tos i32) (param $xt i32) (result i32)
+     (if (result i32)
+       (i32.gt_u (local.get $xt) (i32.const 0xff))
+       (then
+         (call_indirect
+           (type $dataWord)
+           (i32.and (local.get $xt)
+                    (i32.const 0xff))
+           (local.get $tos)
+           (local.get $xt)))
+       (else
+         (call_indirect
+           (type $word)
+           (local.get $xt)
+           (local.get $tos)))))
+      
   ;; Execute the given execution token
   (func $execute (param $tos i32) (param $xt i32) (result i32)
     (local $body i32)
+    
+    ;; If the xt is less than stack base then it is an index directly
+    ;; into the table and should just be called
+    (if (i32.lt_u (local.get $xt) (i32.const 0x10000 (; = STACK_BASE ;)))
+      (then
+        (return (call $executeCall (local.get $tos) (local.get $xt)))))
 
     ;; Get the table index of the dictionary entry
     (local.set $body (call $body (local.get $xt)))
@@ -1327,7 +1349,8 @@
     (local.get $tos)
     (call $ensureCompiling (i32.const 0x20588 ))
     (call $emitConst (i32.add (global.get $nextTableIndex) (i32.const 1)))
-    (call $compileCall (i32.const 1) (i32.const 0x4 (; = SET_LATEST_BODY_INDEX ;)))
+    (call $compileCall (i32.const 1)
+          (i32.const 0x4 (; = SET_LATEST_BODY_INDEX ;)))
     (call $endColon)
     (call $startColon (i32.const 1))
     (call $emitGetLocal (i32.const 0))
@@ -2406,7 +2429,7 @@
 
   ;; [6.1.2540](https://forth-standard.org/standard/right-bracket)
   (func $right-bracket (param $tos i32) (result i32)
-    (i32.store (i32.const 0x20990 (; = body(STATE) ;)) (i32.const 2)) ;; Compiling ITC
+    (i32.store (i32.const 0x20990 (; = body(STATE) ;)) (i32.const 1)) ;; Compiling ITC
     (local.get $tos))
   (data (i32.const 0x20b04) "\f8\0a\02\00" "\01" "]  " "\c2\00\00\00")
   (elem (i32.const 0xc2) $right-bracket)
@@ -2436,6 +2459,12 @@
 
   ;; Pictured output pointer
   (global $po (mut i32) (i32.const -1))
+
+  ;; ITC pointers
+  ;; Instruction pointer
+  (global $ip (mut i32) (i32.const 0x0))
+  ;; Code pointer
+  (global $w  (mut i32) (i32.const 0x0))
 
   ;; Error code
   ;; 
@@ -2770,30 +2799,65 @@
     (call $emitTeeLocal (i32.const 0))
     (call $emitGetLocal (i32.const 0))
     (call $emitLoad))
-    
+
   (func $compileExecute (param $tos i32) (param $xt i32) (result i32)
+    (block $endCase (result i32)
+      (block $caseDefault  
+        (block $caseCompileSTC
+          (block $caseCompileITC 
+            (br_table $caseDefault $caseCompileSTC $caseCompileITC 
+              (i32.load (i32.const 0x20990 (; body(STATE) ;)))))  
+          (call $compileITCExecute (local.get $tos) (local.get $xt))
+          (br $endCase))  
+        (call $compileSTCExecute (local.get $tos) (local.get $xt))
+        (br $endCase)) 
+      (call $fail (i32.const 0x20095 (; str="error" ;)))
+      (local.get $tos)))
+  (elem  (i32.const 0x5  (; = COMPILE_EXECUTE_INDEX ;)) $compileExecute)
+      
+  (func $compileSTCExecute (param $tos i32) (param $xt i32) (result i32)
     (local $body i32)
     (local.get $tos)
-    (if (i32.eq (local.get $xt) (i32.const 2)) 
-      ;; ITC
-      (then 
-        (i32.store (global.get $here) (local.get $xt))
-        (global.set $here 
-          (call $aligned (i32.add (global.get $here) (i32.const 4)))))
-      (else 
-        (local.set $body (call $body (local.get $xt)))
-        (if (i32.and (i32.load (i32.add (local.get $xt) (i32.const 4)))
-                     (i32.const 0x40 (; = F_DATA ;)))
-          (then
-            (call $emitConst (i32.add (local.get $body) (i32.const 4)))
-            (call $compileCall (i32.const 1) (i32.load (local.get $body))))
-          (else
-            (call $compileCall (i32.const 0) (i32.load (local.get $body))))))))
-  (elem (i32.const 0x5 (; = COMPILE_EXECUTE_INDEX ;)) $compileExecute)
+    (local.set $body (call $body (local.get $xt)))
+    (if (i32.and (i32.load (i32.add (local.get $xt) (i32.const 4)))
+                 (i32.const 0x40 (; = F_DATA ;)))
+      (then
+        (call $emitConst (i32.add (local.get $body) (i32.const 4)))
+        (call $compileCall (i32.const 1) (i32.load (local.get $body))))
+      (else
+        (call $compileCall (i32.const 0) (i32.load (local.get $body))))))
+  
+  (func $compileITCExecute (param $tos i32) (param $xt i32) (result i32)
+    (local.get $tos)
+    (i32.store (global.get $here) (local.get $xt))
+    (global.set $here (i32.add (global.get $here) (i32.const 4))))
 
   (func $compileCall (param $type i32) (param $n i32)
+    (block $endCase 
+       (block $caseDefault  
+         (block $caseCompileSTC
+           (block $caseCompileITC 
+             (br_table $caseDefault $caseCompileSTC $caseCompileITC 
+               (i32.load (i32.const 0x20990 (; body(STATE) ;)))))
+          (call $compileITCCall (local.get $type) (local.get $n))
+          (br $endCase))
+        (call $compileSTCCall (local.get $type) (local.get $n))
+        (br $endCase))
+       (call $fail (i32.const 0x20095 (; str="error" ;)))
+      )
+        )
+
+  (func $compileSTCCall (param $type i32) (param $n i32)
     (call $emitConst (local.get $n))
     (call $emit2 (i32.const 0x11) (local.get $type) (i32.const 0x0)))
+
+  (func $compileITCCall (param $type i32) (param $n i32)
+    (global.get $here)
+    (if (result i32) (local.get $type)
+      (then (i32.add (local.get $n) (i32.const 0x4000)))
+      (else (local.get $n)))
+    (i32.store)
+    (global.set $here (i32.add (global.get $here) (i32.const 4))))
 
   (func $emitBlock (call $emit1 (i32.const 0x02) (i32.const 0x0 (; block type ;))))
   (func $emitLoop (call $emit1 (i32.const 0x03) (i32.const 0x0 (; block type ;))))
