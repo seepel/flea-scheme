@@ -1,76 +1,93 @@
 ;; A simple Indirectly threaded Forth interpreter in 32 bit WebAssembly
 ;;
+;; Each entry is broken up into a header and a body.
+;;
+;; +-----+-----+------+------+---------+-------------+-----+
+;; | PFA | CFA | LINK | 4NAM | E\0\0\0 | PARAM FIELD | ... |
+;; +-----+-----+------+------+---------+-------------+-----+
+;; <-------------- header ------------> <------ body ------> 
+;;
+;; The header consists of 
+;; * The parameter field address (PFA)
+;;   This is a pointer to the start of the body. Typically directly after the
+;;   dictionary entry
+;; * The code field address (CFA)
+;;   This is an index into the wasm table of functions.
+;; * The link field
+;;   This is a pointer to the previous word in the dictionary. 
+;; * The name length
+;;   This is the length of the name of the word in a single byte.
+;; * The name of the word
+;;   This is the name of the word as a byte string. Typically utf8
+;; * Padding
+;;   The header is padded to a multiple of 4 bytes.
+;;
+;;
+;; +===========================================================================+
+;;  Dictionary Lookup
+;; +===========================================================================+
+;;  The dictionary is a linked list of words. Follow the link field to search
+;;  th list.
+;;
+;;               Next dictoionary entry
+;;                ^
+;;                |
+;; +------+-|---+-|----+-----+------+
+;; | PFA? | CFA | LINK | LEN | NAME |
+;; +------+-----+------+-----+------+
+;;                ^
+;;                |
+;;        +-|---+-|----+------+
+;;        | CFA | LINK | 3DUP |
+;;        +-----+------+------+
+;;                ^
+;;                |
+;; +------+-|---+-|----+------+-------+-|---+-|-+-|----+
+;; | PFA  | CFA | LINK | 6DOU | BLE\0 | DUP | + | EXIT |
+;; +------+-----+------+------+-------+-----+---+------+
+;;                ^
+;;                |
+;; +------+-|---+-|----+------+------+--------+-|------+-|------+------+
+;; | PFA  | CFA | LINK | 9QUA | DRUP | LE\0\0 | DOUBLE | DOUBLE | EXIT |
+;; +-|----+-----+------+------+------+--------+--------+--------+------+
+;;
+;; +===========================================================================+
+;;  Execution
+;; +===========================================================================+
+;;  Each cell in the parameter field is a pointer to a CFA in the dictionary.
+;;  The CFA is an index into the wasm table of functions for the primitive
+;;  words.
+;;                                             
+;;                                         +-----+------+------+
+;;                                         | $DUP | LINK | 3DUP |
+;;                                         +-----+------+------+
+;;                                         ^
+;;                                         |     +-----+------+--------+
+;;                                         |     | $+ | LINK | 1+\0\0 |
+;;                                         |     +-----+------+--------+
+;;                                         |     ^
+;;                                         |     |   +-------+------+------+---------+
+;;                                         |     |   | $EXIT | LINK | 4EXI | T\0\0\0 |
+;;                                         |     |   +-------+------+------+---------+
+;;         $ENTER                          |     |   ^
+;;          ^                              |     |   |
+;; +------+-|------+------+------+-------+-|---+-|-+-|----+
+;; | PFA  | $ENTER | LINK | 6DOU | BLE\0 | DUP | + | EXIT |
+;; +-|----+--------+------+------+-------+-----+---+------+
+;;   +-----------------------------------^
 ;; 
+;; NOTE! The PFA for a word doesn't have to point to the end of the dictionary
+;;       entry. It can point to any cell in memory. This allows some
+;;       implementation flexibility.
 ;;
-;;   pointer to previous word
-;;    ^
-;;    |
-;; +--|------+---
-;; | LINK    | 6 
-;; +---------+---
-;;    ^       len                         padding
-;;    |
-;; +--|------+------ - - -
-;; | LINK    | 9  xt ...
-;; +---------+------ - - -
-;;    ^       len                                     padding
-;;    |
-;;    |
-;;   LATEST
-;;        
-;;                                          pointer to previous word
-;;                                           ^
-;;                                           |
-;;        +---+---+---+---+---+---+---+---+--|------+----+------+ - -
-;;        | D | O | U | B | L | E | 0 | 6 | LINK    | xt | addr | ...   
-;;        +---+---+---+---+---+---+---+---+---------+----+------- - -
-;;                                                    ^
-;;                                                    | 
-;; +---+---+---+---+---+---+---+---+---+---+---+---+--|------+----+------+ - - 
-;; | Q | U | A | D | R | U | P | L | E | 0 | 0 | 9 | LINK    | xt | addr | ... 
-;; +---+---+---+---+---+---+---+---+---+---+---+---+---------+----+------+ - -
-;;                                                             ^
-;;                                                             |
-;;                                                            LATEST
-;; 
-;; 
-;; 
-;;
-;;
-;; Each entry is broken up into a header, an xt and a body
-;;
-;; +------+---+--------+----------+-------------+-----------+--------------+
-;; | link | 6 | DOUBLE | ENTER xt | addr of DUP | addr of + | addr of EXIT |
-;; +------+---+--------+----------+-------------+-----------+--------------+
-;; <----- header -----> <-- xt --> <---------------- body ----------------> 
-;;
-;; When it is called from the context of another word the address is
-;; resolved to the xt for the word. In this case DOUBLE is a user
-;; defined word so the xt is the table index for the ENTER word.
-;; The xt in a dictionary entry is always an index into the table
-;; pointing at a function so this xt is used with call_indirect.
-;;
-;; : QUADRUPLE DOUBLE DOUBLE ;
-;;
-;; +-----------------+
-;; | xt             --> $enter  : DOUBLE DUP + ;
-;; +-----------------+
-;; | addr of DOUBLE  ---------> +--------------+
-;; +-----------------+          | xt           -> $enter        
-;; | addr of DOUBLE  |          +--------------+
-;; +-----------------+          | addr of DUP --------> +----+
-;; | addr of EXIT    |  $ip --> +--------------+        | xt -> $dup tbl index
-;; +-----------------+          | addr of +    |        +----+
-;;                              +--------------+
-;;                              | addr of EXIT |
-;;                              +--------------+
-;;
-;;
-;;
-;;
-;; On the other hand, DUP is a primitive word so the xt is an index
-;; into the table where the $dup function is stored.
-;;
+;; +-----+---+------+
+;; | DUP | + | EXIT |
+;; +-----+---+------+
+;;   ^
+;;   |
+;; +-|---+-----+------+------+-------+
+;; | PFA | CFA | LINK | 4DOU | BLE\0 |
+;; +-----+-----+------+------+-------+
 
 (module
   (import "env" "memory"  (memory $memory 1601))
@@ -121,61 +138,69 @@
 
   (func $QUIT
     (global.set $sp (i32.const 0x4000))
-    (global.set $rp (i32.const 0x8000))
-    )
-  (data (i32.const 0x8000) "\00\00\00\00" "QUIT   " "\04")
-  (data (i32.const 0x800C) "\01\00\00\00")
+    (global.set $rp (i32.const 0x8000)))
   (elem (i32.const 0x1) $QUIT)
+  (data (i32.const 0x8000) "\01\00\00\00")             ;; CFA
+  (data (i32.const 0x8004) "\00\00\00\00")             ;; LINK
+  (data (i32.const 0x8008) "\04" "QUIT" "\00\00\00")   ;; NAME
+  
 
   (func $LIT
     (call $push (i32.load (i32.add (global.get $w) (i32.const 4)))))
-  (data (i32.const 0x8010) "\00\80\00\00" "LIT" "\83")
-  (data (i32.const 0x8018) "\02\00\00\00")
   (elem (i32.const 0x2) $LIT)
+  (data (i32.const 0x8010) "\02\00\00\00")
+  (data (i32.const 0x8014) "\03" "LIT")
+  (data (i32.const 0x8018) "\00\80\00\00")
 
   (func $DUP
     (global.set $sp (i32.sub (global.get $sp) (i32.const 4)))
     (i32.load (i32.add (global.get $sp) (i32.const 4)))
     (i32.store (global.get $sp)))
-  (data (i32.const 0x801c) "\10\80\00\00" "DUP" "\03")
-  (data (i32.const 0x8024) "\03\00\00\00")
   (elem (i32.const 0x3) $DUP)
+  (data (i32.const 0x801c) "\03\00\00\00")
+  (data (i32.const 0x8020) "\03" "DUP")
+  (data (i32.const 0x8024) "\10\80\00\00")
+  
 
   (func $*
     (call $2pop)
     (i32.mul)
     (call $push))
-  (data (i32.const 0x8028) "\1c\80\00\00" "*  " "\01")
-  (data (i32.const 0x802c) "\04\00\00\00")
   (elem (i32.const 0x4) $*)
+  (data (i32.const 0x8028) "\04\00\00\00")
+  (data (i32.const 0x802c) "\01" "*" "\00\00")
+  (data (i32.const 0x8030) "\1c\80\00\00")
 
   (func $ENTER
     (call $pushr (global.get $ip))
-    (global.set $ip (i32.add (global.get $w) (i32.const 4))))
-  (data (i32.const 0x8030) "\28\80\00\00" "ENTER  " "\05")
-  (data (i32.const 0x803c) "\05\00\00\00")
+    (global.set $ip (i32.load (i32.sub (global.get $w) (i32.const 4)))))
   (elem (i32.const 0x5) $ENTER)
+  (data (i32.const 0x8034) "\05\00\00\00")
+  (data (i32.const 0x8038) "\05" "ENTER" "\00\00")
+  (data (i32.const 0x8040) "\28\80\00\00")
 
   (func $EXIT
     (global.set $ip (call $popr)))
-  (data (i32.const 0x8040) "\34\80\00\00" "EXIT   " "\04")
-  (data (i32.conts 0x804c) "\06\00\00\00")
   (elem (i32.const 0x6) $EXIT)
+  (data (i32.const 0x8044) "\06\00\00\00")
+  (data (i32.const 0x8048) "\04" "EXIT" "\00\00\00")
+  (data (i32.const 0x8050) "\34\80\00\00")
 
-  (data (i32.const 0x8050) "\44\80\00\00" "SQUARE " "\06")
-  (data (i32.const 0x805c) 
-        "\05\00\00\00"                ;; $ENTER
-        "\10\80\00\00" "\02\00\00\00" ;; $LIT 2
-        "\28\80\00\00"                ;; $*
-        "\44\80\00\00")               ;; $EXIT 
+  ;; : SQUARE DUP * ;
+  (data (i32.const 0x8050) "\06\80\00\00")       ;; PFA
+  (data (i32.const 0x8054) "\05\00\00\00")       ;; CFA 
+  (data (i32.const 0x8058) "\06" "SQUARE" "\00") ;; NAME
+  (data (i32.const 0x8060) "\44\80\00\00")       ;; LINK
+  (data (i32.const 0x8064) "\1c\80\00\00")       ;; DUP
+  (data (i32.const 0x8068) "\28\80\00\00")       ;; *
+  (data (i32.const 0x806c) "\40\80\00\00")       ;; EXIT
+
 
   (func $NEXT
     (global.set $w (i32.load (global.get $ip)))
     (global.set $ip (i32.add (global.get $ip) (i32.const 4)))
     (call_indirect (type $word) (i32.load (global.get $w))))
     
-
-  (data (i32.const 0x))
 
   (global $here (mut i32) (i32.const 0x7fff))     ;; dictionary pointer
   (global $latest (mut i32) (i32.const 0x7fff))   ;; latest word
