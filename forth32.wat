@@ -29,7 +29,7 @@
 ;;  The dictionary is a linked list of words. Follow the link field to search
 ;;  th list.
 ;;
-;;               Next dictoionary entry
+;;               Next dictionary entry
 ;;                ^
 ;;                |
 ;; +------+-|---+-|----+-----+------+
@@ -91,60 +91,82 @@
 
 (module
   (import "env" "memory"  (memory $memory 1601))
-  (import "env" "malloc" (func $malloc (param i32) (result i32)))
-  (import "env" "free"   (func $free   (param i32)))
+  (import "env" "debug"   (func $debug (param i32)))
+  ;; Function table to hold primitive words
   (table (export "table") 0xc3 funcref)
 
+  ;; Interpreter interface
+
   ;; Registers
-  (global $sp (mut i32) (i32.const 0x4000))       ;; data stack pointer
-  (global $rp (mut i32) (i32.const 0x8000))       ;; return stack pointer
-  (global $ip (mut i32) (i32.const 0x8000))       ;; instruction pointer
-  (global $w  (mut i32) (i32.const 0))            ;; working register
-  (global $x (mut i32) (i32.const 0))             ;; execution register
-          
+  ;; data stack pointer 
+  (global $sp (mut i32) (i32.const 0x4000)) 
+  (global $rp (mut i32) (i32.const 0x8000)) ;; return stack pointer
+  (global $ip (mut i32) (i32.const 0x8000)) ;; instruction pointer
+  (global $w (mut i32) (i32.const 0)) ;; working register
+  (global $here (mut i32) (i32.const 0x8000)) ;; dictionary pointer
+  (global $latest (mut i32) (i32.const 0x8000)) ;; latest word
 
-  (type $word (func))
-
-  (func $push (param $x i32)
+  (func $sp     (export "sp")        (result i32) (global.get $sp))
+  (func $rp     (export "rp")        (result i32) (global.get $rp))
+  (func $ip     (export "ip")        (result i32) (global.get $ip))
+  (func $w      (export "w")         (result i32) (global.get $w))
+  (func $here   (export "here")      (result i32) (global.get $here))
+  (func $latest (export "latest")    (result i32) (global.get $latest))
+  (func $at     (export "at") (param $addr i32) (result i32)
+    (i32.load (local.get $addr)))
+ 
+  (func $push (export "push") (param $x i32)
     (global.set $sp (i32.sub (global.get $sp) (i32.const 4)))
     (i32.store (global.get $sp) (local.get $x)))
 
-  (func $2push (param $x i32) (param $y i32)
+  (func $2push (export "2push") (param $x i32) (param $y i32)
     (global.set $sp (i32.sub (global.get $sp) (i32.const 8)))
     (i32.store (global.get $sp)
                (local.get $x))
     (i32.store (i32.add (global.get $sp) (i32.const 4))
                (local.get $y)))
 
-  (func $pushr (param $x i32)
+  (func $rpush (export "2rpush") (param $x i32)
     (global.set $rp (i32.sub (global.get $rp) (i32.const 4)))
     (i32.store (global.get $rp) (local.get $x)))
 
-  (func $tos (result i32)
-    (i32.load (global.get $sp)))
-
-  (func $pop (result i32)
+  (func $pop  (export "pop") (result i32)
     (i32.load (global.get $sp))
     (global.set $sp (i32.add (global.get $sp) (i32.const 4))))
 
-  (func $2pop (result i32) (result i32)
+  (func $2pop (export "2pop") (result i32) (result i32)
     (i32.load (global.get $sp))
     (i32.load (i32.add (global.get $sp) (i32.const 4)))
     (global.set $sp (i32.add (global.get $sp) (i32.const 8))))
 
-  (func $popr (result i32)
+  (func $rpop (export "rpop") (result i32)
     (i32.load (global.get $rp))
     (global.set $rp (i32.add (global.get $rp) (i32.const 4))))
 
-  (func $QUIT
+  (func $2rpop (export "2rpop") (result i32) (result i32)
+    (i32.load (global.get $rp))
+    (i32.load (i32.add (global.get $rp) (i32.const 4)))
+    (global.set $rp (i32.add (global.get $rp) (i32.const 8))))
+
+  (type $word (func))
+
+  (func $NEXT (export "NEXT")
+    (call $debug (global.get $ip))
+    (global.set $w (i32.load (global.get $ip)))
+    (global.set $ip (i32.add (global.get $ip) (i32.const 4)))
+    (call_indirect (type $word) (i32.load (global.get $w))))
+     
+  ;; Primitive words
+
+  (func $QUIT (export "QUIT")
     (global.set $sp (i32.const 0x4000))
-    (global.set $rp (i32.const 0x8000)))
+    (global.set $rp (i32.const 0x8000))
+    )
   (elem (i32.const 0x1) $QUIT)
   (data (i32.const 0x8000) "\01\00\00\00")             ;; CFA
   (data (i32.const 0x8004) "\00\00\00\00")             ;; LINK
   (data (i32.const 0x8008) "\04" "QUIT" "\00\00\00")   ;; NAME
   
-
   (func $LIT
     (call $push (i32.load (i32.add (global.get $w) (i32.const 4)))))
   (elem (i32.const 0x2) $LIT)
@@ -152,27 +174,26 @@
   (data (i32.const 0x8014) "\03" "LIT")
   (data (i32.const 0x8018) "\00\80\00\00")
 
-  (func $DUP
+  (func $DUP (export "DUP")
+    (i32.load (global.get $sp))
     (global.set $sp (i32.sub (global.get $sp) (i32.const 4)))
-    (i32.load (i32.add (global.get $sp) (i32.const 4)))
     (i32.store (global.get $sp)))
   (elem (i32.const 0x3) $DUP)
   (data (i32.const 0x801c) "\03\00\00\00")
   (data (i32.const 0x8020) "\03" "DUP")
   (data (i32.const 0x8024) "\10\80\00\00")
   
-
-  (func $*
+  (func $+ (export "ADD")
     (call $2pop)
-    (i32.mul)
+    (i32.add)
     (call $push))
-  (elem (i32.const 0x4) $*)
+  (elem (i32.const 0x4) $+)
   (data (i32.const 0x8028) "\04\00\00\00")
-  (data (i32.const 0x802c) "\01" "*" "\00\00")
+  (data (i32.const 0x802c) "\01" "+" "\00\00")
   (data (i32.const 0x8030) "\1c\80\00\00")
 
   (func $ENTER
-    (call $pushr (global.get $ip))
+    (call $rpush (global.get $ip))
     (global.set $ip (i32.load (i32.sub (global.get $w) (i32.const 4)))))
   (elem (i32.const 0x5) $ENTER)
   (data (i32.const 0x8034) "\05\00\00\00")
@@ -180,28 +201,23 @@
   (data (i32.const 0x8040) "\28\80\00\00")
 
   (func $EXIT
-    (global.set $ip (call $popr)))
+    (global.set $ip (call $rpop))
+    )
   (elem (i32.const 0x6) $EXIT)
   (data (i32.const 0x8044) "\06\00\00\00")
   (data (i32.const 0x8048) "\04" "EXIT" "\00\00\00")
   (data (i32.const 0x8050) "\34\80\00\00")
 
   ;; : SQUARE DUP * ;
-  (data (i32.const 0x8050) "\06\80\00\00")       ;; PFA
-  (data (i32.const 0x8054) "\05\00\00\00")       ;; CFA 
-  (data (i32.const 0x8058) "\06" "SQUARE" "\00") ;; NAME
-  (data (i32.const 0x8060) "\44\80\00\00")       ;; LINK
-  (data (i32.const 0x8064) "\1c\80\00\00")       ;; DUP
-  (data (i32.const 0x8068) "\28\80\00\00")       ;; *
-  (data (i32.const 0x806c) "\40\80\00\00")       ;; EXIT
+  ;; (data (i32.const 0x8050) "\06\80\00\00")       ;; PFA
+  ;; (data (i32.const 0x8054) "\05\00\00\00")       ;; CFA 
+  ;; (data (i32.const 0x8058) "\06" "SQUARE" "\00") ;; NAME
+  ;; (data (i32.const 0x8060) "\44\80\00\00")       ;; LINK
+  ;; (data (i32.const 0x8064) "\1c\80\00\00")       ;; DUP
+  ;; (data (i32.const 0x8068) "\28\80\00\00")       ;; +
+  ;; (data (i32.const 0x806c) "\40\80\00\00")       ;; EXIT
 
 
-  (func $NEXT
-    (global.set $w (i32.load (global.get $ip)))
-    (global.set $ip (i32.add (global.get $ip) (i32.const 4)))
-    (call_indirect (type $word) (i32.load (global.get $w))))
-    
+  
 
-  (global $here (mut i32) (i32.const 0x7fff))     ;; dictionary pointer
-  (global $latest (mut i32) (i32.const 0x7fff))   ;; latest word
 )
