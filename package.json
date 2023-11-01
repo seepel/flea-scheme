@@ -22,6 +22,11 @@
   },
   "homepage": "https://github.com/seepel/flea-scheme#readme",
   "dependencies": {
-    "typescript": "^5.2.2"
+    "jest": "^29.7.0",
+    "typescript": "^5.2.2",
+    "wabt": "^1.0.32"
+  },
+  "jest": {
+    "moduleType": "esm"
   }
 }
