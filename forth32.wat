@@ -175,9 +175,7 @@
   (data (i32.const 0x8018) "\00\80\00\00")
 
   (func $DUP (export "DUP")
-    (i32.load (global.get $sp))
-    (global.set $sp (i32.sub (global.get $sp) (i32.const 4)))
-    (i32.store (global.get $sp)))
+   (call $push (i32.load (global.get $sp))))
   (elem (i32.const 0x3) $DUP)
   (data (i32.const 0x801c) "\03\00\00\00")
   (data (i32.const 0x8020) "\03" "DUP")
@@ -191,6 +189,11 @@
   (data (i32.const 0x8028) "\04\00\00\00")
   (data (i32.const 0x802c) "\01" "+" "\00\00")
   (data (i32.const 0x8030) "\1c\80\00\00")
+
+  (func $* (export "MUL")
+    (call $2pop)
+    (i32.mul)
+    (call $push))
 
   (func $ENTER
     (call $rpush (global.get $ip))

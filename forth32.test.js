@@ -31,25 +31,36 @@ const inst = mod.instance;
 // @type {Forth}
 const forth = inst.exports;
 
+// Single-length signed number
+const x = 42;
+const y = 100;
+const z = 142;
+const n = -42;
+const n0 = 0;
+const n1 = 1;
+const n2 = 2;
+const n3 = 3;
+const nmin = -2147483648;
+const nmax = 2147483647;
+
 describe("forth32.test.js", () => {
   const x = 42
-  describe("push(x), pop()", () => {
-    test("push(x)", () => {
-      const oldSP = forth.sp()
-      forth.push(x)
-      const newSP = forth.sp()
-      expect(newSP).toBe(oldSP - 4)
-      expect(forth.at(newSP)).toBe(x)
-    })
-    test("pop()", () => {
-      forth.push(x)
-      const oldSP = forth.sp()
-      const x = forth.pop()
-      const newSP = forth.sp()
-      expect(newSP).toBe(oldSP + 4)
-      expect(x).toBe(forth.at(oldSP))
-    })
+  test("push(x)", () => {
+    const oldSP = forth.sp()
+    forth.push(x)
+    const newSP = forth.sp()
+    expect(newSP).toBe(oldSP - 4)
+    expect(forth.at(newSP)).toBe(x)
   })
+  test("pop()", () => {
+    forth.push(x)
+    const oldSP = forth.sp()
+    const y = forth.pop()
+    const newSP = forth.sp()
+    expect(newSP).toBe(oldSP + 4)
+    expect(y).toBe(x)
+  })
+
   test("x DUP", () => {
     forth.push(x)
     const oldSP = forth.sp()
@@ -66,6 +77,18 @@ describe("forth32.test.js", () => {
     forth.push(y)
     const oldSP = forth.sp()
     forth.ADD()
+    const newSP = forth.sp()
+    expect(newSP).toBe(oldSP + 4)
+    expect(forth.at(newSP)).toBe(z)
+  })
+  test("x y *", () => {
+    const x = 42
+    const y = 100
+    const z = x * y
+    forth.push(x)
+    forth.push(y)
+    const oldSP = forth.sp()
+    forth.MUL()
     const newSP = forth.sp()
     expect(newSP).toBe(oldSP + 4)
     expect(forth.at(newSP)).toBe(z)
